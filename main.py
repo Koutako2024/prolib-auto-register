@@ -1,10 +1,29 @@
 import cv2, asyncio
-from os import listdir
+from os import listdir, environ
 from pathlib import Path
 from sys import argv
 from typing import Any
 from zxingcpp import read_barcodes
 from httpx import AsyncClient
+from dotenv import load_dotenv
+from vercel.blob import UploadProgressEvent, AsyncBlobClient, PutBlobResult
+
+
+def on_progress(e: UploadProgressEvent) -> None:
+    print(f"progress: {e.loaded}/{e.total} bytes ({e.percentage}%)")
+
+
+async def handle_image_upload(filename: str, file: bytes) -> PutBlobResult:
+    client = AsyncBlobClient()
+
+    uploaded = await client.put(
+        filename,
+        file,
+        access="public",
+        add_random_suffix=True,
+        on_upload_progress=on_progress,
+    )
+    return uploaded
 
 
 def shikakukeitoridasu() -> None:
@@ -100,14 +119,23 @@ def get_authors(raw: str) -> list[str]:
 async def proc(dir: Path, no_suf: str, exntensions: list[str]) -> None:
     try:
         path = dir / (no_suf + "_2." + exntensions[1])
+
         isbn = read_barcode(path)
         if isbn is None:
             print(f"error: couldn't read barcode. {path=}")
             return
+
         title, publisher, pubdate, author = await fetch_summary(isbn)
         if title is None:
             print("error: title is None.")
             return
+
+        image_urls = list()
+        for i in range(3):
+            fn = f"{no_suf}_{i+1}.{exntensions[i]}"
+            with open(dir / fn, "br") as f:
+                res = await handle_image_upload(fn, f.read())
+            image_urls.append(res.url)
 
         json: dict = {
             "contents": "TODO",
@@ -118,20 +146,24 @@ async def proc(dir: Path, no_suf: str, exntensions: list[str]) -> None:
             "publishYear": int(pubdate[:4]) if pubdate else None,
             "holdingNum": 1,
             "isbn": isbn,
-            "coverImageUrl": None,
-            "backCoverImageUrl": None,
-            "spineImageUrl": None,
+            "coverImageUrl": image_urls[0] if len(image_urls) > 0 else None,
+            "backCoverImageUrl": image_urls[1] if len(image_urls) > 1 else None,
+            "spineImageUrl": image_urls[2] if len(image_urls) > 2 else None,
         }
-        print(f"{json=}")
-        return
+
         async with AsyncClient() as client:
             response = await client.post(
-                "https://prolib.prolab.club/api/books/", json=json
+                "https://prolib.prolab.club/api/books",
+                json=json,
+                headers={"Cookie": environ["COOKIE"]},
             )
         print(f"{response.status_code=}")
         print(f"{response.text=}")
+        print(f"{response.json()=}")
+
     except Exception as e:
         print(e)
+
     return
 
 
@@ -165,4 +197,6 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    load_dotenv(".env")
+    load_dotenv()
     asyncio.run(main())
