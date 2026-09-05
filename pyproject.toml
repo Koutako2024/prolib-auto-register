@@ -1,0 +1,20 @@
+[project]
+name = "prolib-auto-register"
+version = "0.1.0"
+description = "tool to register many books to prolib easily."
+readme = "README.md"
+authors = [{ name = "Koutako2024", email = "koutako2021@yahoo.co.jp" }]
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28.1",
+    "opencv-python>=5.0.0.93",
+    "vercel>=0.10.0",
+    "zxing-cpp>=3.1.1",
+]
+
+[project.scripts]
+prolib-auto-register = "prolib_auto_register:main"
+
+[build-system]
+requires = ["uv_build>=0.12.9,<0.13.0"]
+build-backend = "uv_build"
