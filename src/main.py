@@ -7,6 +7,7 @@ from zxingcpp import read_barcodes
 from httpx import AsyncClient
 from dotenv import load_dotenv
 from vercel.blob import UploadProgressEvent, AsyncBlobClient, PutBlobResult
+from ollama import chat as ollama_chat
 
 
 def on_progress(e: UploadProgressEvent) -> None:
@@ -196,7 +197,72 @@ async def main() -> None:
     return
 
 
+def try_ollama(model_name: str = "qwen3-vl:4b") -> tuple[str, list[str]]:
+    print("start.")
+    res = ollama_chat(
+        model_name,
+        messages=[
+            {
+                "role": "system",
+                "content": """\
+目次をocrしてください。目次が写ってなければ「TODO」にしてください。
+            """,
+            },
+            {
+                "role": "user",
+                "images": [
+                    Path("./out2.jpg"),
+                    # Path("./1_1.jpg"),
+                    # Path("./1_2.jpg"),
+                    # Path("./1_3.jpg"),
+                ],
+            },
+        ],
+    )
+    print("thinking:")
+    print(res.message.thinking)
+    print(":thinking")
+    print(res.message.content)
+    contents: str = res.message.content if res.message.content else "TODO"
+    if contents.strip() == "TODO":
+        return "TODO", ["TODO"]
+
+    res2 = ollama_chat(
+        "qwen3-vl:4b",
+        messages=[
+            {
+                "role": "system",
+                "content": """/
+本の目次から、タグとして、関連する技術用語を改行区切りで列挙してください。
+""",
+            },
+            {
+                "role": "user",
+                "content": contents,
+            },
+        ],
+    )
+    print("thinking:")
+    print(res2.message.thinking)
+    print(":thinking")
+    print(res2.message.content)
+    tags: list[str] = list(
+        filter(
+            lambda x: x,
+            (res2.message.content if res2.message.content else "TODO").splitlines(),
+        )
+    )
+    return contents, tags
+
+
 if __name__ == "__main__":
+    for i in range(3):
+        contents, tags = try_ollama()
+        print(contents, tags)
+        if contents != "TODO" and "TODO" not in tags:
+            break
+        print("one more chance!")
+    exit()
     load_dotenv(".env")
     load_dotenv()
     asyncio.run(main())
