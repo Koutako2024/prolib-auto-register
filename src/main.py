@@ -3,6 +3,7 @@ from os import listdir, environ
 from pathlib import Path
 from sys import argv
 from typing import Any
+from time import sleep
 from zxingcpp import read_barcodes
 from httpx import AsyncClient
 from dotenv import load_dotenv
@@ -128,7 +129,31 @@ async def proc(dir: Path, no_suf: str, exntensions: list[str]) -> None:
 
         title, publisher, pubdate, author = await fetch_summary(isbn)
         if title is None:
-            print("error: title is None.")
+            print(f"error: title is None. {path=}")
+            return
+        authors: list[str] = get_authors(author or "")
+        if not authors:
+            print(f"error authors is empty. {path=}")
+            return
+
+        json: dict = {
+            "contents": "TODO",
+            "tags": ["TODO", "auto-registered"],
+            "title": title,
+            "authors": authors,
+            "publisher": publisher,
+            "publishYear": int(pubdate[:4]) if pubdate else None,
+            "holdingNum": 1,
+            "isbn": isbn,
+        }
+
+        print("Are you sure to send this?:")
+        print(json)
+        ans: str = "_"
+        while ans not in ["y", "n"]:
+            ans = input("(y/n)?>")
+
+        if ans == "n":
             return
 
         image_urls = list()
@@ -138,15 +163,7 @@ async def proc(dir: Path, no_suf: str, exntensions: list[str]) -> None:
                 res = await handle_image_upload(fn, f.read())
             image_urls.append(res.url)
 
-        json: dict = {
-            "contents": "TODO",
-            "tags": ["TODO", "auto-registered"],
-            "title": title,
-            "authors": get_authors(author) if author else None,
-            "publisher": publisher,
-            "publishYear": int(pubdate[:4]) if pubdate else None,
-            "holdingNum": 1,
-            "isbn": isbn,
+        json |= {
             "coverImageUrl": image_urls[0] if len(image_urls) > 0 else None,
             "backCoverImageUrl": image_urls[1] if len(image_urls) > 1 else None,
             "spineImageUrl": image_urls[2] if len(image_urls) > 2 else None,
@@ -160,7 +177,6 @@ async def proc(dir: Path, no_suf: str, exntensions: list[str]) -> None:
             )
         print(f"{response.status_code=}")
         print(f"{response.text=}")
-        print(f"{response.json()=}")
 
     except Exception as e:
         print(e)
@@ -191,8 +207,12 @@ async def main() -> None:
     print(data)
     input("enter to proceed: ")
 
-    tasks = [proc(target_dir, k, v) for k, v in data.items()]
-    await asyncio.gather(*tasks)
+    # tasks = [proc(target_dir, k, v) for k, v in data.items()]
+    # await asyncio.gather(*tasks)
+    for k, v in data.items():
+        await proc(target_dir, k, v)
+        sleep(3)
+
     print("finished.")
     return
 
@@ -256,13 +276,13 @@ def try_ollama(model_name: str = "qwen3-vl:4b") -> tuple[str, list[str]]:
 
 
 if __name__ == "__main__":
-    for i in range(3):
-        contents, tags = try_ollama()
-        print(contents, tags)
-        if contents != "TODO" and "TODO" not in tags:
-            break
-        print("one more chance!")
-    exit()
+    # for i in range(3):
+    #     contents, tags = try_ollama()
+    #     print(contents, tags)
+    #     if contents != "TODO" and "TODO" not in tags:
+    #         break
+    #     print("one more chance!")
+    # exit()
     load_dotenv(".env")
     load_dotenv()
     asyncio.run(main())
